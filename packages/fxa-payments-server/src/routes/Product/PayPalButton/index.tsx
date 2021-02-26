@@ -63,6 +63,7 @@ export const PaypalButton = ({
       const { token } = await apiGetPaypalCheckoutToken({ currencyCode });
       return token;
     } catch (error) {
+      error.code = 'general-paypal-error';
       setPaymentError(error);
     }
     return null;
@@ -91,6 +92,7 @@ export const PaypalButton = ({
         });
         refreshSubscriptions();
       } catch (error) {
+        error.code = 'general-paypal-error';
         setPaymentError(error);
       }
       return null;
@@ -106,6 +108,7 @@ export const PaypalButton = ({
 
   const onError = useCallback(
     (error) => {
+      error.code = 'general-paypal-error';
       setPaymentError(error);
     },
     [setPaymentError]

@@ -3,53 +3,75 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { aggregateNameValuePairs, uuidTransformer } from '../../transformers';
-import { AuthBaseModel } from './auth-base';
+import { AuthBaseModel, Proc } from './auth-base';
 
 export class Device extends AuthBaseModel {
-  public static tableName = 'devices';
-  public static idColumn = ['uid', 'id'];
+  static tableName = 'devices';
+  static idColumn = ['uid', 'id'];
 
   protected $uuidFields = ['id', 'uid', 'sessionTokenId', 'refreshTokenId'];
   protected $intBoolFields = ['callbackIsExpired'];
 
   // table fields
-  public id!: string;
-  public uid!: string;
-  public sessionTokenId!: string;
-  public name?: string;
-  public type?: string;
-  public createdAt?: number;
-  public callbackURL?: string;
-  public callbackPublicKey?: string;
-  public callbackAuthKey?: string;
-  public callbackIsExpired!: boolean;
-  public refreshTokenId?: string;
+  id!: string;
+  uid!: string;
+  sessionTokenId!: string;
+  name?: string;
+  type?: string;
+  createdAt?: number;
+  callbackURL?: string;
+  callbackPublicKey?: string;
+  callbackAuthKey?: string;
+  callbackIsExpired!: boolean;
+  refreshTokenId?: string;
 
   // joined fields (from accountDevices_# stored proc)
-  public uaBrowser?: string;
-  public uaBrowserVersion?: string;
-  public uaOS?: string;
-  public uaOSVersion?: string;
-  public uaDeviceType?: string;
-  public uaFormFactor?: string;
-  public lastAccessTime?: string;
-  public commandName?: string;
-  public commandData?: string;
+  uaBrowser?: string;
+  uaBrowserVersion?: string;
+  uaOS?: string;
+  uaOSVersion?: string;
+  uaDeviceType?: string;
+  uaFormFactor?: string;
+  lastAccessTime?: string;
+  commandName?: string;
+  commandData?: string;
 
-  public static async findByUid(uid: string) {
-    const knex = Device.knex();
-    const uidBuffer = uuidTransformer.to(uid);
-    const [result] = await knex.raw('Call accountDevices_16(?)', uidBuffer);
-    const rowPacket = result.shift() as any[];
-    if (rowPacket.length === 0) {
-      return [];
-    }
+  static fromRows(rows: any[]): Device[] {
     return aggregateNameValuePairs(
-      rowPacket,
+      rows,
       'id',
       'commandName',
       'commandData',
       'availableCommands'
     ).map((row: any) => Device.fromDatabaseJson(row));
+  }
+
+  static async findByUid(uid: string) {
+    const rows = await Device.callProcedure(
+      Proc.AccountDevices,
+      uuidTransformer.to(uid)
+    );
+    return Device.fromRows(rows);
+  }
+
+  static async findByPrimaryKey(uid: string, id: string) {
+    const rows = await Device.callProcedure(
+      Proc.Device,
+      uuidTransformer.to(uid),
+      uuidTransformer.to(id)
+    );
+    return Device.fromRows(rows).shift() || null;
+  }
+
+  static async findByUidAndTokenVerificationId(
+    uid: string,
+    tokenVerificationId: string
+  ) {
+    const rows = await Device.callProcedure(
+      Proc.DeviceFromTokenVerificationId,
+      uuidTransformer.to(uid),
+      uuidTransformer.to(tokenVerificationId)
+    );
+    return Device.fromRows(rows).shift() || null;
   }
 }

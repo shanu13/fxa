@@ -22,6 +22,7 @@ import PaymentLegalBlurb from '../../../components/PaymentLegalBlurb';
 import { SubscriptionTitle } from '../../../components/SubscriptionTitle';
 import { TermsAndPrivacy } from '../../../components/TermsAndPrivacy';
 import { PaymentProcessing } from '../../../components/PaymentProcessing';
+import { ProviderType } from '../../../lib/PaymentProvider';
 
 import * as Amplitude from '../../../lib/amplitude';
 import { Localized } from '@fluent/react';
@@ -92,12 +93,30 @@ export const SubscriptionCreate = ({
 
   const [paypalScriptLoaded, setPaypalScriptLoaded] = useState(false);
 
+  // The Stripe customer isn't created until payment is submitted, so
+  // customer can be null and customer.payment_provider can be undefined.
+  const paymentProvider: ProviderType = customer?.payment_provider;
+
+  const isStorybookContext = Array.from(
+    document.head.getElementsByTagName('SCRIPT')
+  ).filter(
+    (ele) =>
+      // @ts-ignore: HTMLElement does not have property 'src'
+      ele.src ===
+      'https://www.paypal.com/sdk/js?client-id=sb&vault=true&commit=false&intent=authorize&disable-funding=credit,card'
+  ).length;
+
   useEffect(() => {
     if (!config.featureFlags.usePaypalUIByDefault) {
       return;
     }
 
     if (paypalButtonBase) {
+      setPaypalScriptLoaded(true);
+      return;
+    }
+
+    if (isStorybookContext) {
       setPaypalScriptLoaded(true);
       return;
     }
@@ -203,7 +222,7 @@ export const SubscriptionCreate = ({
           })}
           data-testid="subscription-create"
         >
-          {!hasExistingCard(customer) && paypalScriptLoaded && (
+          {isNewCustomer(customer) && paypalScriptLoaded && (
             <div
               className="subscription-create-pay-with-other"
               data-testid="pay-with-other"
@@ -230,7 +249,7 @@ export const SubscriptionCreate = ({
           )}
 
           <div className="subscription-create-pay-with-card">
-            {!hasExistingCard(customer) && !paypalScriptLoaded && (
+            {isNewCustomer(customer) && !paypalScriptLoaded && (
               <div>
                 <Localized id="pay-with-heading-card-only">
                   <p className="pay-with-heading">Pay with card</p>
@@ -239,7 +258,7 @@ export const SubscriptionCreate = ({
               </div>
             )}
 
-            {!hasExistingCard(customer) && paypalScriptLoaded && (
+            {isNewCustomer(customer) && paypalScriptLoaded && (
               <div>
                 <Localized id="pay-with-heading-card-or">
                   <p className="pay-with-heading">Or pay with card</p>
@@ -248,39 +267,45 @@ export const SubscriptionCreate = ({
               </div>
             )}
 
-            <h3 className="billing-title">
-              <Localized id="sub-update-payment-title">
-                <span className="title">Payment information</span>
-              </Localized>
-            </h3>
+            {!isExistingPaypalCustomer(customer) && (
+              <>
+                <h3 className="billing-title">
+                  <Localized id="sub-update-payment-title">
+                    <span className="title">Payment information</span>
+                  </Localized>
+                </h3>
 
-            <ErrorMessage isVisible={!!paymentError}>
-              {paymentError && (
-                <Localized id={getErrorMessage(paymentError.code || 'UNKNOWN')}>
-                  <p data-testid="error-payment-submission">
-                    {getErrorMessage(paymentError.code || 'UNKNOWN')}
-                  </p>
-                </Localized>
-              )}
-            </ErrorMessage>
+                <ErrorMessage isVisible={!!paymentError}>
+                  {paymentError && (
+                    <Localized
+                      id={getErrorMessage(paymentError.code || 'UNKNOWN')}
+                    >
+                      <p data-testid="error-payment-submission">
+                        {getErrorMessage(paymentError.code || 'UNKNOWN')}
+                      </p>
+                    </Localized>
+                  )}
+                </ErrorMessage>
 
-            <PaymentForm
-              {...{
-                customer,
-                submitNonce,
-                onSubmit,
-                onChange,
-                inProgress,
-                validatorInitialState,
-                confirm: true,
-                plan: selectedPlan,
-                onMounted: onFormMounted,
-                onEngaged: onFormEngaged,
-              }}
-            />
+                <PaymentForm
+                  {...{
+                    customer,
+                    submitNonce,
+                    onSubmit,
+                    onChange,
+                    inProgress,
+                    validatorInitialState,
+                    confirm: true,
+                    plan: selectedPlan,
+                    onMounted: onFormMounted,
+                    onEngaged: onFormEngaged,
+                  }}
+                />
+              </>
+            )}
           </div>
           <div className="subscription-create-footer">
-            <PaymentLegalBlurb />
+            <PaymentLegalBlurb provider={paymentProvider} />
             {selectedPlan && <TermsAndPrivacy plan={selectedPlan} />}
           </div>
         </div>
@@ -330,7 +355,7 @@ async function handleSubscriptionPayment({
 } & SubscriptionCreateAuthServerAPIs) {
   // If there's an existing card on record, GOTO 3
 
-  if (hasExistingCard(customer)) {
+  if (isExistingStripeCustomer(customer)) {
     const createSubscriptionResult = await apiCreateSubscriptionWithPaymentMethod(
       {
         priceId: selectedPlan.plan_id,
@@ -502,7 +527,17 @@ async function handlePaymentIntent({
   }
 }
 
-const hasExistingCard = (customer: Customer | null) =>
-  customer && customer.last4 && customer.subscriptions.length > 0;
+const isExistingStripeCustomer = (customer: Customer | null) =>
+  customer &&
+  customer.payment_provider === 'stripe' &&
+  customer.subscriptions.length > 0;
+
+const isExistingPaypalCustomer = (customer: Customer | null) =>
+  customer &&
+  customer.payment_provider === 'paypal' &&
+  customer.subscriptions.length > 0;
+
+const isNewCustomer = (customer: Customer | null) =>
+  !isExistingStripeCustomer(customer) && !isExistingPaypalCustomer(customer);
 
 export default SubscriptionCreate;

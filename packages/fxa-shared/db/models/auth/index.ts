@@ -150,6 +150,12 @@ export async function getAllPayPalBAByUid(
     .orderBy('createdAt', 'DESC');
 }
 
+export async function getPayPalBAByBAId(
+  billingAgreementId: string
+): Promise<PayPalBillingAgreements> {
+  return PayPalBillingAgreements.query().findOne({ billingAgreementId });
+}
+
 /**
  * Create a PayPal Billing Agreement record for a user by uid.
  * @param uid

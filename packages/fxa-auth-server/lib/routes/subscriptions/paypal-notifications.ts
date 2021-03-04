@@ -11,6 +11,11 @@ import { StripeHelper } from '../../payments/stripe';
 import { reportSentryError } from '../../sentry';
 import { AuthLogger, AuthRequest } from '../../types';
 import { PayPalHandler } from './paypal';
+import {
+  getAccountCustomerByUid,
+  getPayPalBAByBAId,
+} from 'fxa-shared/db/models/auth';
+import { Stripe } from 'stripe';
 
 export class PayPalNotificationHandler extends PayPalHandler {
   /**
@@ -78,7 +83,19 @@ export class PayPalNotificationHandler extends PayPalHandler {
     }
   }
 
-  private async handleMpCancel(message: IpnMerchPmtType) {}
+  private async handleMpCancel(message: IpnMerchPmtType) {
+    const billingAgreement = await getPayPalBAByBAId(message.mp_id);
+    if (billingAgreement.status == 'Cancelled') {
+      return;
+    }
+    const accountCustomer = await getAccountCustomerByUid(billingAgreement.uid);
+    this.stripeHelper.removeCustomerPaypalAgreement(
+      accountCustomer.uid,
+      { id: accountCustomer.stripeCustomerId } as Stripe.Customer,
+      billingAgreement.billingAgreementId
+    );
+    // TODO: Send email to user that they must go to sub management and re-auth PayPal
+  }
 
   /**
    * Verify and dispatch IPN events from PayPal
